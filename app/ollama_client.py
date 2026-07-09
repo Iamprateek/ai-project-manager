@@ -1,4 +1,6 @@
 import json
+import sys
+import time
 from urllib import error, request
 
 from app.config import Settings
@@ -13,7 +15,7 @@ def generate_text(settings: Settings, prompt: str) -> str:
     payload = {
         "model": settings.ollama_model,
         "prompt": prompt,
-        "stream": False,
+        "stream": True,
     }
     encoded_payload = json.dumps(payload).encode("utf-8")
     http_request = request.Request(
@@ -23,16 +25,44 @@ def generate_text(settings: Settings, prompt: str) -> str:
         method="POST",
     )
 
+    print(
+        f"Calling Ollama model '{settings.ollama_model}' at {settings.ollama_base_url} "
+        f"(timeout {settings.ollama_timeout_seconds}s)...",
+        file=sys.stderr,
+    )
+    started = time.monotonic()
+    last_update = started
+    chunks: list[str] = []
+
     try:
         with request.urlopen(http_request, timeout=settings.ollama_timeout_seconds) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
+            for raw_line in response:
+                line = raw_line.decode("utf-8").strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                chunks.append(event.get("response", ""))
+
+                now = time.monotonic()
+                if now - last_update >= 3:
+                    print(
+                        f"  ...still generating ({int(now - started)}s elapsed, "
+                        f"{len(''.join(chunks))} chars so far)",
+                        file=sys.stderr,
+                    )
+                    last_update = now
+
+                if event.get("done"):
+                    break
     except error.URLError as exc:
         raise OllamaError(f"Could not reach Ollama at {settings.ollama_base_url}") from exc
-    except json.JSONDecodeError as exc:
-        raise OllamaError("Ollama returned an invalid response") from exc
 
-    generated = response_payload.get("response")
-    if not isinstance(generated, str):
+    generated = "".join(chunks).strip()
+    print(f"Ollama responded in {int(time.monotonic() - started)}s.", file=sys.stderr)
+    if not generated:
         raise OllamaError("Ollama response did not include generated text")
-    return generated.strip()
+    return generated
 

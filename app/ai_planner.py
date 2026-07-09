@@ -1,8 +1,15 @@
 import json
+import re
 from typing import Any
 
 from app.config import Settings
 from app.ollama_client import generate_text
+
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_thinking(text: str) -> str:
+    return _THINK_BLOCK.sub("", text).strip()
 
 
 def plan_github_issues(settings: Settings, repo: str, goal: str) -> list[dict[str, Any]]:
@@ -30,7 +37,7 @@ Rules:
 Repository: {repo}
 Goal: {goal}
 """
-    response = generate_text(settings, prompt)
+    response = _strip_thinking(generate_text(settings, prompt))
     return _normalize_issues(_parse_json_array(response))
 
 
@@ -64,7 +71,7 @@ Rules:
 Repository: {repo}
 Idea: {idea}
 """
-    response = generate_text(settings, prompt)
+    response = _strip_thinking(generate_text(settings, prompt))
     parsed = _parse_json_object(response)
     epic = parsed.get("epic", {})
     issues = parsed.get("issues", [])
