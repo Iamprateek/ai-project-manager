@@ -14,6 +14,7 @@ from app.gh_client import (
     create_repo,
     list_issues,
     merge_pull_request,
+    protect_branch,
     reopen_issue,
     require_auth,
     view_repo,
@@ -21,7 +22,12 @@ from app.gh_client import (
 )
 from app.git_client import GitCliError, commit_changes, push_current_branch
 from app.ollama_client import OllamaError
-from app.workflow import create_epic_from_idea, ensure_workflow_labels, start_issue
+from app.workflow import (
+    create_epic_from_idea,
+    ensure_pr_ready_to_merge,
+    ensure_workflow_labels,
+    start_issue,
+)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -55,6 +61,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif args.command == "setup-labels":
             ensure_workflow_labels(args.repo)
             print(f"Workflow labels are ready in {args.repo}.")
+        elif args.command == "repo-protect":
+            protect_branch(
+                args.repo,
+                args.branch,
+                args.reviews,
+                _split_csv(args.checks),
+                not args.allow_admin_bypass,
+            )
+            print(f"Branch protection applied to {args.branch} in {args.repo}.")
         elif args.command == "idea":
             idea = _read_goal(args.idea, args.idea_file)
             result = create_epic_from_idea(settings, args.repo, idea)
@@ -74,6 +89,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             body = args.body or f"Closes #{args.issue}"
             print(create_pull_request(args.repo, title, body, args.base, args.draft))
         elif args.command == "pr-merge":
+            if not args.skip_checks:
+                ensure_pr_ready_to_merge(args.repo, args.number, args.reviews)
             print(merge_pull_request(args.repo, args.number, args.method, not args.keep_branch))
         elif args.command == "plan":
             goal = _read_goal(args.goal, args.goal_file)
@@ -137,6 +154,21 @@ def build_parser() -> argparse.ArgumentParser:
     setup_labels = subparsers.add_parser("setup-labels", help="Create workflow labels.")
     setup_labels.add_argument("--repo", required=True, help="Repository in owner/name format.")
 
+    repo_protect = subparsers.add_parser(
+        "repo-protect", help="Apply production branch protection rules to a branch."
+    )
+    repo_protect.add_argument("--repo", required=True, help="Repository in owner/name format.")
+    repo_protect.add_argument("--branch", default="main", help="Branch to protect.")
+    repo_protect.add_argument("--reviews", type=int, default=1, help="Required approving reviews.")
+    repo_protect.add_argument(
+        "--checks", default="ci", help="Comma-separated required status check names."
+    )
+    repo_protect.add_argument(
+        "--allow-admin-bypass",
+        action="store_true",
+        help="Let repo admins merge without meeting the rules above.",
+    )
+
     idea = subparsers.add_parser("idea", help="Create an epic and backlog issues from an idea.")
     idea.add_argument("--repo", required=True, help="Repository in owner/name format.")
     idea_group = idea.add_mutually_exclusive_group(required=True)
@@ -172,6 +204,14 @@ def build_parser() -> argparse.ArgumentParser:
     pr_merge.add_argument("number", type=int, help="PR number.")
     pr_merge.add_argument("--method", choices=["merge", "squash", "rebase"], default="squash")
     pr_merge.add_argument("--keep-branch", action="store_true", help="Do not delete branch after merge.")
+    pr_merge.add_argument(
+        "--reviews", type=int, default=1, help="Approving reviews required before merge."
+    )
+    pr_merge.add_argument(
+        "--skip-checks",
+        action="store_true",
+        help="Skip the client-side review/CI gate (GitHub branch protection still applies if configured).",
+    )
 
     plan = subparsers.add_parser("plan", help="Use Ollama to generate GitHub issues.")
     plan.add_argument("--repo", required=True, help="Repository in owner/name format.")

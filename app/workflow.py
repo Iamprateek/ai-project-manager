@@ -10,6 +10,7 @@ from app.gh_client import (
     edit_issue_body,
     remove_issue_labels,
     view_issue,
+    view_pull_request,
 )
 from app.git_client import create_branch, issue_branch_name
 
@@ -64,6 +65,46 @@ def create_epic_from_idea(settings: Settings, repo: str, idea: str) -> dict[str,
         "epic": {"number": epic_number, "title": epic["title"], "url": epic_url},
         "issues": created_issues,
     }
+
+
+_PASSING_STATES = {"SUCCESS", "NEUTRAL", "SKIPPED"}
+
+
+def ensure_pr_ready_to_merge(
+    repo: str,
+    number: int,
+    required_reviews: int = 1,
+    require_checks: bool = True,
+) -> None:
+    """Client-side substitute for GitHub branch protection.
+
+    GitHub Free does not offer branch protection rules on private
+    repositories, so this re-checks the same rules (review approval, CI
+    passing) directly against the PR before allowing a merge.
+    """
+    pr = view_pull_request(repo, number)
+    problems = []
+
+    if required_reviews > 0 and pr.get("reviewDecision") != "APPROVED":
+        problems.append(
+            f"needs an approving review (status: {pr.get('reviewDecision') or 'REVIEW_REQUIRED'})"
+        )
+
+    if require_checks:
+        checks = pr.get("statusCheckRollup") or []
+        if not checks:
+            problems.append("no CI checks have reported yet")
+        else:
+            failing = [
+                check.get("name") or check.get("context") or "unknown check"
+                for check in checks
+                if (check.get("conclusion") or check.get("state") or "").upper() not in _PASSING_STATES
+            ]
+            if failing:
+                problems.append(f"CI checks not passing: {', '.join(failing)}")
+
+    if problems:
+        raise ValueError(f"PR #{number} is not ready to merge: " + "; ".join(problems))
 
 
 def start_issue(repo: str, issue_number: int, branch_prefix: str = "feature") -> str:

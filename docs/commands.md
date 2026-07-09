@@ -188,7 +188,22 @@ By default, the PR:
 
 GitHub automatically closes the issue after the PR is merged.
 
-## 16. Merge PR
+## 16. Protect a Branch
+
+```bash
+python3 -m app.cli repo-protect --repo Iamprateek/example-project --branch main
+```
+
+Applies production-grade branch protection to `main`:
+
+- Requires the PR to be up to date and passing the `ci` status check.
+- Requires at least 1 approving review (`--reviews` to change).
+- Blocks force pushes and branch deletion.
+- Enforces the rules on admins too, unless `--allow-admin-bypass` is passed.
+
+Use `--checks` (comma-separated) if your CI job names differ from `ci`.
+
+## 17. Merge PR
 
 ```bash
 python3 -m app.cli pr-merge --repo Iamprateek/example-project 12
@@ -202,3 +217,9 @@ Supported merge methods:
 - `merge`
 - `rebase`
 
+Before merging, this checks the PR's review decision and CI status itself
+(`--reviews`, default 1) and refuses to merge if either is missing — this is
+a client-side substitute for GitHub branch protection, since GitHub Free does
+not offer branch protection on private repositories. Use `--skip-checks` to
+bypass it (e.g. when GitHub's own branch protection is already enforcing the
+same rules server-side).

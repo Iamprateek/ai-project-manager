@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Feature or scope of work
+    url: https://github.com/Iamprateek/ai-project-manager#quick-start
+    about: Prefer letting AI plan feature work — run `python -m app.cli idea --repo <owner/repo> --idea "..."` to generate an epic and backlog issues instead of filing one by hand.

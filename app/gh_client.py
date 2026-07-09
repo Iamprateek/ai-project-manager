@@ -181,6 +181,21 @@ def create_pull_request(
     return result.stdout
 
 
+def view_pull_request(repo: str, number: int) -> dict[str, Any]:
+    return run_gh(
+        [
+            "pr",
+            "view",
+            str(number),
+            "--repo",
+            repo,
+            "--json",
+            "number,title,reviewDecision,statusCheckRollup,mergeable",
+        ],
+        parse_json=True,
+    )
+
+
 def merge_pull_request(repo: str, number: int, method: str = "squash", delete_branch: bool = True) -> str:
     if method not in {"merge", "squash", "rebase"}:
         raise ValueError("method must be merge, squash, or rebase")
@@ -189,6 +204,50 @@ def merge_pull_request(repo: str, number: int, method: str = "squash", delete_br
         args.append("--delete-branch")
     result = run_gh(args)
     return result.stdout
+
+
+def protect_branch(
+    repo: str,
+    branch: str = "main",
+    required_reviews: int = 1,
+    required_checks: Optional[list[str]] = None,
+    enforce_admins: bool = True,
+) -> None:
+    payload = {
+        "required_status_checks": {
+            "strict": True,
+            "contexts": required_checks or [],
+        },
+        "enforce_admins": enforce_admins,
+        "required_pull_request_reviews": {
+            "required_approving_review_count": required_reviews,
+            "dismiss_stale_reviews": True,
+        },
+        "restrictions": None,
+        "required_linear_history": True,
+        "allow_force_pushes": False,
+        "allow_deletions": False,
+    }
+    command = [
+        "gh",
+        "api",
+        "--method",
+        "PUT",
+        f"repos/{repo}/branches/{branch}/protection",
+        "--input",
+        "-",
+    ]
+    result = subprocess.run(command, input=json.dumps(payload), capture_output=True, text=True)
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "GitHub CLI command failed"
+        if "upgrade" in message.lower() and "public" in message.lower():
+            raise GitHubCliError(
+                "GitHub Free does not offer branch protection on private repositories. "
+                "Make the repository public, upgrade to GitHub Pro/Team, or rely on "
+                "'pr-merge' to enforce reviews and checks client-side instead.\n"
+                f"Original error: {message}"
+            )
+        raise GitHubCliError(message)
 
 
 def _visibility_flag(visibility: str) -> str:

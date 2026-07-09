@@ -44,9 +44,18 @@ Idea
   -> Commit
   -> Push
   -> Create PR with "Closes #42"
+  -> CI must pass, 1 approving review required (main is protected)
   -> Merge
   -> Issue closes automatically
 ```
+
+## Production Git Workflow
+
+- `setup-labels` creates the workflow labels used throughout.
+- `repo-protect` locks down `main` on GitHub's side: PR-only merges, required CI check, required review, no force pushes, no branch deletion. GitHub Free only offers this for **public** repositories — private repos on Free get a clear error explaining that instead of a raw API failure.
+- `pr-merge` re-checks review approval and CI status itself before merging, regardless of plan or visibility. This gives you the same guarantees as branch protection on a private Free-plan repo, where GitHub's server-side enforcement isn't available. Use `--skip-checks` to bypass it.
+- `.github/workflows/ci.yml` runs a compile + smoke test on every PR and push to `main`; this is the `ci` check branch protection requires.
+- `.github/pull_request_template.md` and `.github/ISSUE_TEMPLATE/` give PRs and manual issues a consistent shape. Issue creation itself stays AI-managed via `idea` / `plan`.
 
 ## Quick Start
 

@@ -35,10 +35,10 @@ Recommended models:
 - `llama3.1:8b`: balanced default.
 - `mistral:7b`: lighter local planning.
 - `qwen2.5:7b`: strong structured output.
+- `qwen3:8b`: newer, strong structured output.
 
 Check installed models:
 
 ```bash
 ollama list
 ```
-
