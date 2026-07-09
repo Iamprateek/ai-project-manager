@@ -1,5 +1,7 @@
 # AI Project Manager
 
+This is going to be an AI product manager.
+
 AI-assisted GitHub project automation from the command line.
 
 This tool uses:
