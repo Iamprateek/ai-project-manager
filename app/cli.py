@@ -8,7 +8,6 @@ from app.ai_planner import plan_github_issues
 from app.config import get_settings
 from app.gh_client import (
     GitHubCliError,
-    close_issue,
     create_pull_request,
     create_issue,
     create_repo,
@@ -23,6 +22,7 @@ from app.gh_client import (
 from app.git_client import GitCliError, commit_changes, push_current_branch
 from app.ollama_client import OllamaError
 from app.workflow import (
+    close_ticket,
     create_epic_from_idea,
     ensure_pr_ready_to_merge,
     ensure_workflow_labels,
@@ -55,7 +55,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif args.command == "issue-list":
             print(json.dumps(list_issues(args.repo, args.state, args.limit, _split_csv(args.labels)), indent=2))
         elif args.command == "issue-close":
-            print(close_issue(args.repo, args.number, args.comment))
+            print(close_ticket(args.repo, args.number, args.comment, args.force))
         elif args.command == "issue-open":
             print(reopen_issue(args.repo, args.number, args.comment))
         elif args.command == "setup-labels":
@@ -145,6 +145,11 @@ def build_parser() -> argparse.ArgumentParser:
     issue_close.add_argument("--repo", required=True, help="Repository in owner/name format.")
     issue_close.add_argument("number", type=int)
     issue_close.add_argument("--comment", default="")
+    issue_close.add_argument(
+        "--force",
+        action="store_true",
+        help="Close an epic even if it still has open child issues.",
+    )
 
     issue_open = subparsers.add_parser("issue-open", help="Reopen a GitHub issue.")
     issue_open.add_argument("--repo", required=True, help="Repository in owner/name format.")

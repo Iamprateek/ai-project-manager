@@ -5,6 +5,7 @@ from app.ai_planner import plan_epic
 from app.config import Settings
 from app.gh_client import (
     add_issue_labels,
+    close_issue,
     create_issue,
     create_label,
     edit_issue_body,
@@ -105,6 +106,53 @@ def ensure_pr_ready_to_merge(
 
     if problems:
         raise ValueError(f"PR #{number} is not ready to merge: " + "; ".join(problems))
+
+
+_CHECKLIST_ITEM = re.compile(r"^- \[([ xX])\] #(\d+)(.*)$", re.MULTILINE)
+_PARENT_EPIC = re.compile(r"Part of epic #(\d+)", re.IGNORECASE)
+
+
+def close_ticket(repo: str, number: int, comment: str = "", force: bool = False) -> str:
+    """Close an issue, keeping epics and their child issues in sync.
+
+    Closing an epic while it still has open child issues silently orphans
+    those children, so this refuses unless every child is already closed
+    (or --force is used). Closing a child issue instead checks its box off
+    on the parent epic's checklist.
+    """
+    issue = view_issue(repo, number)
+    labels = {label.get("name", "") for label in issue.get("labels", [])}
+
+    if "epic" in labels and not force:
+        child_numbers = [int(match.group(2)) for match in _CHECKLIST_ITEM.finditer(issue.get("body", ""))]
+        open_children = [
+            child_number
+            for child_number in child_numbers
+            if view_issue(repo, child_number).get("state", "").upper() == "OPEN"
+        ]
+        if open_children:
+            joined = ", ".join(f"#{n}" for n in open_children)
+            raise ValueError(
+                f"Epic #{number} still has open child issues: {joined}. "
+                "Close those first, or pass --force to close the epic anyway."
+            )
+
+    result = close_issue(repo, number, comment)
+
+    parent_match = _PARENT_EPIC.search(issue.get("body", ""))
+    if parent_match:
+        epic_number = int(parent_match.group(1))
+        epic = view_issue(repo, epic_number)
+        updated_body = _CHECKLIST_ITEM.sub(
+            lambda match: f"- [x] #{match.group(2)}{match.group(3)}"
+            if int(match.group(2)) == number
+            else match.group(0),
+            epic.get("body", ""),
+        )
+        if updated_body != epic.get("body", ""):
+            edit_issue_body(repo, epic_number, updated_body)
+
+    return result
 
 
 def start_issue(repo: str, issue_number: int, branch_prefix: str = "feature") -> str:
